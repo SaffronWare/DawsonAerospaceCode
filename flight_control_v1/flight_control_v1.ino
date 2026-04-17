@@ -1,16 +1,16 @@
-// code written by man... -ttt
+// code written by man... -TTT (triple t aka tung tung tung sahur)
 #include <Servo.h>
 #include <Wire.h>
 #include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
 
-
-#define DEGR * PI / 180.0f
-#define RAD * 180.0f / PI
+// IMPORTANT WARNING. ALL SIGNS AND OFFSETS AND TUNING PARAMETERS SHOULD BE **PHYSICALLY**
+// TESTED FOR ANY NEW PLANE OR AFTER ANY SIGNIFICANT HARDWARE MODIFICATIONS BEFORE FLIGHT.
 
 // UNITS NOTICE
 // angles are in radians for now... unless a d is in front of var name
 // dt is in seconds whereas time management is done in microseconds.
+
 
 // --------------------- CONSTANTS & SETUP -------------------------
 
@@ -31,16 +31,28 @@ const auto GYRO_RANGE = MPU6050_RANGE_500_DEG;
 // since we are running a filter on it later on. 
 const auto MPU_FILTER_BANDWIDTH = MPU6050_BAND_44_HZ;
 
-\\ For filtering gyro drift and accelerometer noise
-const float filter_coeficient = 0.98f; \\ higher the more gyro has control, less accelerometer has control
+// For filtering gyro drift and accelerometer noise
+const float filter_coeficient = 0.98f; // higher the more gyro has control, less accelerometer has control
 
 // Essentially damps the correction to not overshoot due to angular momentum
-const float angular_velocity_correction_importance = 0.2f; // FINE TUNE PLEASE!
-const float servo_correction_factor = 2.0f; // FINE TUNEEEE
+const float correction_damping = 1.0f; // FINE TUNE EXPERIMENTALLY PLEASE!
+const float servo_correction_factor = 3.0f; // FINE TUNEEEE
 
-const float limit_roll_correction = 30.0f DEGR;
-const float limit_pitch_correction = 30.0f DEGR;
-const float limit_yaw_correction = 30.0f DEGR;
+// preventsservos fromfucking exploding everywhere
+const float limit_roll_correction = 30.0f * PI / 180.0f;
+const float limit_pitch_correction = 30.0f * PI / 180.0f;
+const float limit_yaw_correction = 30.0f * PI / 180.0f;
+
+// PINSSS FINALLYL ATFUCKING 1AM 
+const int yaw_input_pin = -1293219301; // i dont fucking know SET THIS TMW!
+const int roll_input pin = -102938120392813;
+const int pitch_input_pin= 12123092813;
+const int throttle_input_pin = 12938120938210938;
+
+const int rudder_pin = 12039821093; 
+const int elevator_pin = 1209382309;
+const int aileronR_pin =123213;
+const int aileronL_pin = 123123;
 
 void setup()
 {   
@@ -138,11 +150,11 @@ void loop()
         // C) yaw increases when turning towards right wing
         // D) pitch increases as nose goes up 
         // COMPLEMENTARY FILTERING! 
-        roll = filter_coeficient * (roll + gAccX * dt) + (1-filter_coeficient) * atan2(-accX,accZ);
+        roll = filter_coeficient * (roll + gAccX * dt) + (1-filter_coeficient) * pitch = atan2(-accX, sqrt(accY*accY + accZ*accZ));
         pitch = filter_coeficient * (pitch + gAccY * dt) + (1-filter_coeficient) * atan2(accY, accZ);
         yaw += gAccZ * dt; // unfortunately no possible filtering for yaw
         
-        dRoll = roll RAD; dPitch = pitch RAD; dYaw = yaw RAD;
+        dRoll = roll * 180.0f / PI; dPitch = pitch * 180.0f / PI; dYaw = yaw * 180.0f/PI;
 
         // IGNORE SIMPLY FOR DATA TRANSFER
         Serial.print("DBG ");
@@ -156,29 +168,30 @@ void loop()
         Serial.print(gAccX);
         Serial.print(" ");
         Serial.print(gAccY);
-        Serial.print(" ")
+        Serial.print(" ");
         Serial.print(gAccZ);
         Serial.print(" ");
         Serial.print(roll);
-        Serial.print(" ")
+        Serial.print(" ");
         Serial.print(yaw);
-        Serial.print(" ")
+        Serial.print(" ");
         Serial.println(pitch);
         // IGNORE ABOVE
 
         // choosing angle for servo to take to correct the over/under shooting of desired angle
         // For yaw ignore as gyro drift is not corrected, we will let user fully control yaw
                 //servoYawCorrection = servo_correction_factor * (desiredYaw - yaw) 
-                    // - angular_velocity_correction_importance * gAccZ;
+                    // - correction_damping * gAccZ;
         servoPitchCorrection =  servo_correction_factor * (desiredPitch - pitch)
-            - angular_velocity_correction_importance * gAccY;
+            - correction_damping * gAccY;
         servoRollCorrection =  servo_correction_factor * (desiredRoll - roll)
-            - angular_velocity_correction_importance * gAccX;
+            - correction_damping * gAccX;
 
         // for yaw we just turn based on strength of yaw input from controller
         // Essentially giving user full control over yaw
         servoYawCorrection = servo_correction_factor * strengthYaw;
         
+        // constraiing to maximum correction angle
         servoPitchCorrection = constrain(servoPitchCorrection, -limit_pitch_correction, limit_pitch_correction);
         servoRollCorrection = constrain(servoRollCorrection, -limit_roll_correction, limit_roll_correction);
         servoYawCorrection = constrain(servoYawCorrection, -limit_yaw_correction, limit_yaw_correction);
