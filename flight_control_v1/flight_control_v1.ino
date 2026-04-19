@@ -1,4 +1,17 @@
 // code written by man... -TTT (triple t aka tung tung tung sahur)
+// install mpu6050 library
+// IMPORTANT NOTE FOR FUTURE LIBRARY FUCKING USEERS:
+// Please go into adafruit_mpu6050.h and do #define MPU6050_DEVICE_ID 0x70 cus our chip is a bootleg goy
+#include <Servo.h>
+#include <Wire.h>
+
+Aryan_Code_Airplane_Brain.ino
+9 KB
+
+// code written by man... -TTT (triple t aka tung tung tung sahur)
+// install mpu6050 library
+// IMPORTANT NOTE FOR FUTURE LIBRARY FUCKING USEERS:
+// Please go into adafruit_mpu6050.h and do #define MPU6050_DEVICE_ID 0x70 cus our chip is a bootleg goy
 #include <Servo.h>
 #include <Wire.h>
 #include <Adafruit_MPU6050.h>
@@ -32,34 +45,47 @@ const auto GYRO_RANGE = MPU6050_RANGE_500_DEG;
 const auto MPU_FILTER_BANDWIDTH = MPU6050_BAND_44_HZ;
 
 // For filtering gyro drift and accelerometer noise
-const float filter_coeficient = 0.98f; // higher the more gyro has control, less accelerometer has control
+const float filter_coeficient = 1.0f; // higher the more gyro has control, less accelerometer has control
 
 // Essentially damps the correction to not overshoot due to angular momentum
 const float correction_damping = 1.0f; // FINE TUNE EXPERIMENTALLY PLEASE!
 const float servo_correction_factor = 3.0f; // FINE TUNEEEE
 
 // preventsservos fromfucking exploding everywhere
-const float limit_roll_correction = 30.0f * PI / 180.0f;
-const float limit_pitch_correction = 30.0f * PI / 180.0f;
-const float limit_yaw_correction = 30.0f * PI / 180.0f;
+const float limit_roll_correction = 45.0f * PI / 180.0f;
+const float limit_pitch_correction = 45.0f * PI / 180.0f;
+const float limit_yaw_correction = 45.0f * PI / 180.0f;
 
 // PINSSS FINALLYL ATFUCKING 1AM 
 const int yaw_input_pin = -1293219301; // i dont fucking know SET THIS TMW!
-const int roll_input pin = -102938120392813;
+const int roll_input_pin = -102938120392813;
 const int pitch_input_pin= 12123092813;
 const int throttle_input_pin = 12938120938210938;
 
-const int rudder_pin = 12039821093; 
+const int rudder_pin = 5; // proper
 const int elevator_pin = 1209382309;
-const int aileronR_pin =123213;
-const int aileronL_pin = 123123;
+const int aileron_pin =123213;
+
+const int RUDDER0 = 124;
+const int ELEVATOR0 = 124;
+const int AILERON0 = 124;
+
+Servo Rudder;
+Servo Elevator;
+Servo Aileron;
+
+// If were in debugging we wont actually update servo data.
+const bool DEBUGGING = true;
+const bool RUDDER_DEBUGGING =true;
+
+
 
 void setup()
 {   
     // make sure output is being read from this channel
     // this begins arduino data transfer with port
 
-    Serial.begin(19200);
+    Serial.begin(115200);
     while (!Serial)
     {
         delay(100);
@@ -69,41 +95,52 @@ void setup()
     Serial.println("----------------------------------------------");
     Serial.print("\nStarting mpu-arduino communication (-1-)...");
 
+    Wire.begin();
+    Serial.println("Wire began!");
+    //delay(2000);
+
     // Starting communication with MPU
     bool started_mpu = false;
     for (int i = 1; i <= 50; i++)
     {
         if (MPU_Sensor.begin(MPU_address))
         {
+            Serial.println("Mpu working...");
             started_mpu = true;
             break;
         }
-        Serial.print("\r(-1) FAILED to start MPU, retrying... (x");
+        Serial.print("(-1) FAILED to start MPU, retrying... (x");
         Serial.print(i);
-        Serial.print(")");
+        Serial.println(")");
         delay(50);
     }
     if (!started_mpu)
     {
-        Serial.print("\r (-1) FAILED TO START MPU AFTER 50 TRIES. TERMINATING...");
+        Serial.println("\r (-1) FAILED TO START MPU AFTER 50 TRIES. TERMINATING...");
 
         // paused program forever
         while (true) {delay(10);}
     }
     Serial.println("\r(-1-) [Success] MPU started!              ");
 
-    Serial.print("Setting accelerometer & gyro range (-2-)...");
+    Serial.println("Setting accelerometer & gyro range (-2-)...");
     MPU_Sensor.setAccelerometerRange(ACC_RANGE);
     MPU_Sensor.setGyroRange(GYRO_RANGE);
     Serial.println("\r(-2-) [Success] Set accelerometer & gyro range!   ");
 
-    Serial.print("Setting filter bandwidth (-3-)...");
+    Serial.println("Setting filter bandwidth (-3-)...");
     MPU_Sensor.setFilterBandwidth(MPU_FILTER_BANDWIDTH);
-    Serial.println("\r(-3-) [Success] Set filter bandwidth!                       ");
+    Serial.println("\r(-3-) [Success] Set filter bandwidth!");
+
+    Serial.println("Attaching rudder (-4-)");
+    Rudder.attach(rudder_pin);
+    Serial.println("(-4-) [Success] rudder attached");
 
     Serial.println("----------SETUP COMPLETE[3/3]---------------");
     delay(100);
     Serial.println("(-4) MAIN PROGRAM STARTING...");
+
+
 }
 
 // ---------------------- LOOP VARIABLES --------------------
@@ -116,6 +153,8 @@ float desiredRoll = 0; float desiredPitch = 0; float strengthYaw = 0;
 
 // servo angle for correction
 float servoRollCorrection; float servoPitchCorrection; float servoYawCorrection;
+
+float rudderAngle = 0; float elevatorAngle = 0; float aileronAngle = 0;
 
 // sensor data
 float accX, accY, accZ;
@@ -134,7 +173,13 @@ void loop()
         dt = (float)(now_time - last_time) * 1e-6f;
         last_time = now_time;
         sensors_event_t a, g, temp; // temp stands for temperature and not temporary lol (victim of this)
-        MPU_Sensor.getEvent(&a, &g, &temp);
+        bool got_read = MPU_Sensor.getEvent(&a, &g, &temp);
+
+
+        if (!got_read)
+        {
+          Serial.println("croski ur reading aint workin");
+        }
 
         // storing sensor data into our variables
         accX = a.acceleration.x;
@@ -150,32 +195,15 @@ void loop()
         // C) yaw increases when turning towards right wing
         // D) pitch increases as nose goes up 
         // COMPLEMENTARY FILTERING! 
-        roll = filter_coeficient * (roll + gAccX * dt) + (1-filter_coeficient) * pitch = atan2(-accX, sqrt(accY*accY + accZ*accZ));
+        roll = filter_coeficient * (roll + gAccX * dt) + (1-filter_coeficient) * atan2(-accX, sqrt(accY*accY + accZ*accZ));
         pitch = filter_coeficient * (pitch + gAccY * dt) + (1-filter_coeficient) * atan2(accY, accZ);
         yaw += gAccZ * dt; // unfortunately no possible filtering for yaw
         
         dRoll = roll * 180.0f / PI; dPitch = pitch * 180.0f / PI; dYaw = yaw * 180.0f/PI;
 
-        // IGNORE SIMPLY FOR DATA TRANSFER
-        Serial.print("DBG ");
-        Serial.print(" ");
-        Serial.print(accX);
-        Serial.print(" ");
-        Serial.print(accY);
-        Serial.print(" ");
-        Serial.print(accZ);
-        Serial.print(" ");
-        Serial.print(gAccX);
-        Serial.print(" ");
-        Serial.print(gAccY);
-        Serial.print(" ");
-        Serial.print(gAccZ);
-        Serial.print(" ");
-        Serial.print(roll);
-        Serial.print(" ");
-        Serial.print(yaw);
-        Serial.print(" ");
-        Serial.println(pitch);
+
+        
+        
         // IGNORE ABOVE
 
         // choosing angle for servo to take to correct the over/under shooting of desired angle
@@ -196,7 +224,43 @@ void loop()
         servoRollCorrection = constrain(servoRollCorrection, -limit_roll_correction, limit_roll_correction);
         servoYawCorrection = constrain(servoYawCorrection, -limit_yaw_correction, limit_yaw_correction);
 
+
+        rudderAngle = servoYawCorrection * 180 / PI;
+        aileronAngle = servoRollCorrection * 180/PI;
+        elevatorAngle = servoPitchCorrection * 180/PI;
+
+        Rudder.write(rudderAngle + RUDDER0);
+        Aileron.write(aileronAngle + AILERON0);
+        Elevator.write(elevatorAngle + ELEVATOR0);
+
+        if (RUDDER_DEBUGGING)
+        {
+            Rudder.write(RUDDER0);
+        }
+
+        Serial.write(ser)
+
+         // IGNORE SIMPLY FOR DATA TRANSFER
+        Serial.print("DBG");
+        Serial.print(" ");
+        Serial.print(dRoll); //  X is properly roll & forward direction-
+        Serial.print(" ");
+        Serial.print(dPitch);
+        Serial.print(" ");
+        Serial.print(dYaw);
+        Serial.print(" ");
+        Serial.print(rudderAngle);
+        Serial.print(" ");
+        Serial.print(elevatorAngle);
+        Serial.print(" ");
+        Serial.print(aileronAngle);
+        Serial.print(" ")
+        Serial.println("");
+
         
+        
+        
+
 
 
     }
