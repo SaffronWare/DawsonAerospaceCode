@@ -34,13 +34,17 @@ try:
     decoded_data= data_bytes.decode('utf-8').strip()
     print(decoded_data)
 
+    # 
+
     values = decoded_data.strip().split(" ")
 
     plane_data = []
 
     if values and values[0] == key:
         for label, value in zip(formatting, values[1:]):
-            plane_data[label][value]
+            plane_data[label].append(value)
+    
+
 
 
 except Exception as e:
