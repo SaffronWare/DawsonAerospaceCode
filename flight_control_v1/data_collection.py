@@ -45,6 +45,10 @@ elevator = load_mesh("plane_model//Elevator.stl")
 ar = load_mesh("plane_model//aileronR.stl")
 al = load_mesh("plane_model//aileronL.stl")
 
+rudder_origin = (4.2,0,0.8)
+elevator_origin = (3.5,0,0)
+aileron_origin = (-1.65, 0,0)
+
 
 # make sure the port used in serialCom line is the one connected or nano every
 #ports = list_ports.comports()
@@ -127,24 +131,50 @@ def rotate_roll(vertices, origin):
 def rotate_yaw(vertices, origin)
 """
 
+def normalf(v1,v2,v3):
+    x1,y1,z1 = [v1[i]- v2[i] for i in range(3)]
+    x2,y2,z2 = [v2[i] - v3[i] for i in range(3)]
+    x = y1*z2 - z1*y2
+    y = z1*x2 - x1*z2
+    z = x1*y2 - y1*x2
+    f = (x**2+y**2+z**2)**(-1/2)
+
+    return (x*f,y*f,z*f)
+
+
+
+
+
 
 # object x ->
 def render(vertices,window):
     projected_points = []
+    normals = []
     for vertex in vertices:
         p_vertex = []
         for point in vertex:
             #print(vertex)
             dist_buff = 500/(point[0]-12) # dividng by x
             x = ((point[1]) * dist_buff) + window_size[0]//2
-            y = ((point[2] - 2) * dist_buff) + window_size[1]//2
+            y = ((point[2] - 3) * dist_buff) + window_size[1]//2
             p_vertex.append((x,y))
-        projected_points.append(p_vertex)
+        normal = normalf(vertex[0],vertex[1],vertex[2])
+        normals.append(normal)
+        projected_points.append((p_vertex, abs(sum(point[0] - 12 for point in vertex))))
 
-    for vertex in projected_points:
-        pygame.draw.line(window, (200,200,200), vertex[0], vertex[1])
-        pygame.draw.line(window, (200,200,200), vertex[1], vertex[2])
-        pygame.draw.line(window, (200,200,200), vertex[2], vertex[0])
+    pp = [(p[0], normal) for p, normal in sorted(zip(projected_points,normals), key=lambda x : x[0][1])]
+
+
+    for vertex,normal in pp[::-1]:
+
+        
+        color_factor = normal[0] + normal[1] + normal[2]
+        color_factor/=2
+        color_factor = abs(color_factor)
+        color_factor = min(color_factor,1)
+        color_factor = max(0,color_factor)
+        
+        pygame.draw.polygon(window, (200*color_factor,200*color_factor,200*color_factor), vertex)
 
 
 plane_frame = plane
@@ -163,18 +193,21 @@ while running:
             running= False
 
 
+    """
     render(plane_frame, window)
     render(rudder_frame,window)
     render(elevator_frame,window)
     render(ar_frame, window)
     render(al_frame, window)
+    """
+    render(plane_frame + rudder_frame +ar_frame + elevator_frame + al_frame, window)
 
 
 
     try:
         data_bytes = b""
         if TESTING:
-            data_bytes = f"DBG 0 0 {45 * (sin(time.time()) + 1)/2} 0 0 0".encode()
+            data_bytes = f"DBG 0 0 0 {45 * (sin(time.time()) + 1)/2} {45 * (sin(time.time()) + 1)/2} {45 * (sin(time.time()) + 1)/2}".encode()
             time.sleep(1/60)
         else:
             data_bytes = serialCom.readline()
@@ -193,11 +226,16 @@ while running:
             aileronAngle = decoded_data[formatting.index("aileron")]
             elevatorAngle = decoded_data[formatting.index("elevator")]
 
+            rudder_frame = rotate_yaw(rudder, rudderAngle * 3.14159 / 180.0, rudder_origin)
+            elevator_frame = rotate_pitch(elevator, elevatorAngle * 3.14159 / 180.0, elevator_origin)
+            ar_frame = rotate_pitch(ar, aileronAngle * 3.14169 / 180, aileron_origin)
+            al_frame = rotate_pitch(al, -aileronAngle * 3.14159 / 180, aileron_origin)
+
             plane_frame = rotate_pitch(plane, pitch * 3.14159 / 180.0, (0,0,0))
-            elevator_frame = rotate_pitch(elevator, pitch * 3.14159 / 180.0, (0,0,0))
-            rudder_frame = rotate_pitch(rudder, pitch * 3.14159 / 180.0, (0,0,0))
-            ar_frame = rotate_pitch(ar, pitch * 3.14159 / 180.0, (0,0,0))
-            al_frame = rotate_pitch(al, pitch * 3.14159 / 180.0, (0,0,0))
+            elevator_frame = rotate_pitch(elevator_frame, pitch * 3.14159 / 180.0, (0,0,0))
+            rudder_frame = rotate_pitch(rudder_frame, pitch * 3.14159 / 180.0, (0,0,0))
+            ar_frame = rotate_pitch(ar_frame, pitch * 3.14159 / 180.0, (0,0,0))
+            al_frame = rotate_pitch(al_frame, pitch * 3.14159 / 180.0, (0,0,0))
 
             plane_frame = rotate_roll(plane_frame, roll * 3.14159 / 180.0, (0,0,0))
             elevator_frame = rotate_roll(elevator_frame, roll * 3.14159 / 180.0, (0,0,0))
