@@ -9,7 +9,7 @@ import csv
 import struct
 from math import sin, cos
 
-TESTING = True
+TESTING = False
 
 window_size = (500,500)
 
@@ -60,10 +60,10 @@ aileron_origin = (-1.65, 0,0)
 key = "DBG"
 formatting = ["roll", "pitch", "yaw", "rudder", "aileron", "elevator"]
 
-
+serialCom = None
 
 if not TESTING:
-    serialCom = serial.serial_for_url('loop://', 115200, timeout=1) # make sure baud rate matches arduino
+    serialCom = serial.serial_for_url('COM9', 115200, timeout=1) # make sure baud rate matches arduino
 
     # magic code that resets arduino (turns connection off -> back on -> resets and in between clears serial)
     serialCom.setDTR(False)
@@ -71,6 +71,7 @@ if not TESTING:
     serialCom.flushInput()
     serialCom.setDTR(True)
 
+    print("serialized...")
 window = pygame.display.set_mode(window_size)
 
 
@@ -154,7 +155,7 @@ def render(vertices,window):
         p_vertex = []
         for point in vertex:
             #print(vertex)
-            dist_buff = 500/(point[0]-12) # dividng by x
+            dist_buff = 500/(point[0]-16) # dividng by x
             x = ((point[1]) * dist_buff) + window_size[0]//2
             y = ((point[2] - 3) * dist_buff) + window_size[1]//2
             p_vertex.append((x,y))
@@ -204,54 +205,55 @@ while running:
 
 
 
-    try:
-        data_bytes = b""
-        if TESTING:
-            data_bytes = f"DBG 0 0 0 {45 * (sin(time.time()) + 1)/2} {45 * (sin(time.time()) + 1)/2} {45 * (sin(time.time()) + 1)/2}".encode()
-            time.sleep(1/60)
-        else:
-            data_bytes = serialCom.readline()
-           
-        decoded_data= data_bytes.decode('utf-8').strip().split()
-        if decoded_data[0] == key:
-            decoded_data = [float(v) for v in decoded_data[1:]]
+    
+    data_bytes = b""
+    
+    if TESTING:
+        data_bytes = f"DBG {45 * (sin(2*time.time()) + 1)/2} {45 * (sin(time.time()) + 1)/2} {0 * (sin(time.time()) + 1)/2} {45 * (sin(3*time.time()) + 1)/2} {45 * (sin(2.5*time.time()) + 1)/2} {45 * (sin(time.time()) + 1)/2}".encode()
+        time.sleep(1/60)
+    else:
+        data_bytes = serialCom.readline()
+        
+    decoded_data= data_bytes.decode('utf-8').strip().split()
+    print(decoded_data)
+    if decoded_data and decoded_data[0] == key:
+        decoded_data = [float(v) for v in decoded_data[1:]]
+        #print(decoded_data)
 
-            
+        
 
-            roll = decoded_data[formatting.index("roll")]
-            yaw = decoded_data[formatting.index("yaw")]
-            pitch = decoded_data[formatting.index("pitch")]
+        roll = decoded_data[formatting.index("roll")]
+        yaw = decoded_data[formatting.index("yaw")] * 0 # yaw is unreliable
+        pitch = decoded_data[formatting.index("pitch")]
 
-            rudderAngle = decoded_data[formatting.index("rudder")]
-            aileronAngle = decoded_data[formatting.index("aileron")]
-            elevatorAngle = decoded_data[formatting.index("elevator")]
+        rudderAngle = decoded_data[formatting.index("rudder")]
+        aileronAngle = decoded_data[formatting.index("aileron")]
+        elevatorAngle = decoded_data[formatting.index("elevator")]
 
-            rudder_frame = rotate_yaw(rudder, rudderAngle * 3.14159 / 180.0, rudder_origin)
-            elevator_frame = rotate_pitch(elevator, elevatorAngle * 3.14159 / 180.0, elevator_origin)
-            ar_frame = rotate_pitch(ar, aileronAngle * 3.14169 / 180, aileron_origin)
-            al_frame = rotate_pitch(al, -aileronAngle * 3.14159 / 180, aileron_origin)
+        rudder_frame = rotate_yaw(rudder, rudderAngle * 3.14159 / 180.0, rudder_origin)
+        elevator_frame = rotate_pitch(elevator, elevatorAngle * 3.14159 / 180.0, elevator_origin)
+        ar_frame = rotate_pitch(ar, aileronAngle * 3.14169 / 180, aileron_origin)
+        al_frame = rotate_pitch(al, -aileronAngle * 3.14159 / 180, aileron_origin)
 
-            plane_frame = rotate_pitch(plane, pitch * 3.14159 / 180.0, (0,0,0))
-            elevator_frame = rotate_pitch(elevator_frame, pitch * 3.14159 / 180.0, (0,0,0))
-            rudder_frame = rotate_pitch(rudder_frame, pitch * 3.14159 / 180.0, (0,0,0))
-            ar_frame = rotate_pitch(ar_frame, pitch * 3.14159 / 180.0, (0,0,0))
-            al_frame = rotate_pitch(al_frame, pitch * 3.14159 / 180.0, (0,0,0))
+        plane_frame = rotate_pitch(plane, pitch * 3.14159 / 180.0, (0,0,0))
+        elevator_frame = rotate_pitch(elevator_frame, pitch * 3.14159 / 180.0, (0,0,0))
+        rudder_frame = rotate_pitch(rudder_frame, pitch * 3.14159 / 180.0, (0,0,0))
+        ar_frame = rotate_pitch(ar_frame, pitch * 3.14159 / 180.0, (0,0,0))
+        al_frame = rotate_pitch(al_frame, pitch * 3.14159 / 180.0, (0,0,0))
 
-            plane_frame = rotate_roll(plane_frame, roll * 3.14159 / 180.0, (0,0,0))
-            elevator_frame = rotate_roll(elevator_frame, roll * 3.14159 / 180.0, (0,0,0))
-            rudder_frame = rotate_roll(rudder_frame, roll * 3.14159 / 180.0, (0,0,0))
-            ar_frame = rotate_roll(ar_frame, roll * 3.14159 / 180.0, (0,0,0))
-            al_frame = rotate_roll(al_frame, roll * 3.14159 / 180.0, (0,0,0))
-            
-            plane_frame = rotate_yaw(plane_frame, yaw * 3.14159 / 180.0, (0,0,0))
-            elevator_frame = rotate_yaw(elevator_frame, yaw * 3.14159 / 180.0, (0,0,0))
-            rudder_frame = rotate_yaw(rudder_frame, yaw * 3.14159 / 180.0, (0,0,0))
-            ar_frame = rotate_yaw(ar_frame, yaw * 3.14159 / 180.0, (0,0,0))
-            al_frame = rotate_yaw(al_frame, yaw * 3.14159 / 180.0, (0,0,0))
+        plane_frame = rotate_roll(plane_frame, roll * 3.14159 / 180.0, (0,0,0))
+        elevator_frame = rotate_roll(elevator_frame, roll * 3.14159 / 180.0, (0,0,0))
+        rudder_frame = rotate_roll(rudder_frame, roll * 3.14159 / 180.0, (0,0,0))
+        ar_frame = rotate_roll(ar_frame, roll * 3.14159 / 180.0, (0,0,0))
+        al_frame = rotate_roll(al_frame, roll * 3.14159 / 180.0, (0,0,0))
+        
+        plane_frame = rotate_yaw(plane_frame, yaw * 3.14159 / 180.0, (0,0,0))
+        elevator_frame = rotate_yaw(elevator_frame, yaw * 3.14159 / 180.0, (0,0,0))
+        rudder_frame = rotate_yaw(rudder_frame, yaw * 3.14159 / 180.0, (0,0,0))
+        ar_frame = rotate_yaw(ar_frame, yaw * 3.14159 / 180.0, (0,0,0))
+        al_frame = rotate_yaw(al_frame, yaw * 3.14159 / 180.0, (0,0,0))
 
 
-    except Exception as e:
-        print(f"error : {e}")
         
     pygame.display.flip()
     

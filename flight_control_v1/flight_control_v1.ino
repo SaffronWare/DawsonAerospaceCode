@@ -1,12 +1,4 @@
-// code written by man... -TTT (triple t aka tung tung tung sahur)
-// install mpu6050 library
-// IMPORTANT NOTE FOR FUTURE LIBRARY FUCKING USEERS:
-// Please go into adafruit_mpu6050.h and do #define MPU6050_DEVICE_ID 0x70 cus our chip is a bootleg goy
-#include <Servo.h>
-#include <Wire.h>
 
-Aryan_Code_Airplane_Brain.ino
-9 KB
 
 // code written by man... -TTT (triple t aka tung tung tung sahur)
 // install mpu6050 library
@@ -45,7 +37,7 @@ const auto GYRO_RANGE = MPU6050_RANGE_500_DEG;
 const auto MPU_FILTER_BANDWIDTH = MPU6050_BAND_44_HZ;
 
 // For filtering gyro drift and accelerometer noise
-const float filter_coeficient = 1.0f; // higher the more gyro has control, less accelerometer has control
+const float filter_coeficient = 0.9f; // higher the more gyro has control, less accelerometer has control
 
 // Essentially damps the correction to not overshoot due to angular momentum
 const float correction_damping = 1.0f; // FINE TUNE EXPERIMENTALLY PLEASE!
@@ -97,8 +89,8 @@ void setup()
 
     Wire.begin();
     Serial.println("Wire began!");
-    //delay(2000);
-
+    delay(1000);
+    Serial.println("Done waiting!");
     // Starting communication with MPU
     bool started_mpu = false;
     for (int i = 1; i <= 50; i++)
@@ -182,11 +174,11 @@ void loop()
         }
 
         // storing sensor data into our variables
-        accX = a.acceleration.x;
-        accY = a.acceleration.y;
+        accX = a.acceleration.y;
+        accY = a.acceleration.x;
         accZ = a.acceleration.z;
-        gAccX = g.gyro.x;
-        gAccY = g.gyro.y;
+        gAccX = g.gyro.y;
+        gAccY = g.gyro.x;
         gAccZ = g.gyro.z;
         // IMPORTANTTTTT!!!!!!!! (not done yet!)
         // Test to make sure of the follow
@@ -195,9 +187,11 @@ void loop()
         // C) yaw increases when turning towards right wing
         // D) pitch increases as nose goes up 
         // COMPLEMENTARY FILTERING! 
-        roll = filter_coeficient * (roll + gAccX * dt) + (1-filter_coeficient) * atan2(-accX, sqrt(accY*accY + accZ*accZ));
-        pitch = filter_coeficient * (pitch + gAccY * dt) + (1-filter_coeficient) * atan2(accY, accZ);
-        yaw += gAccZ * dt; // unfortunately no possible filtering for yaw
+        roll = filter_coeficient * (roll + gAccX * dt) + (1-filter_coeficient) * atan2(accY, accZ);  // board y real x
+        //roll *= -1.0f;
+        pitch = filter_coeficient * (pitch + gAccY * dt) + (1-filter_coeficient) * atan2(-accX, sqrt(accY*accY + accZ*accZ));// board z real y
+        //pitch *= -1.0f;
+        yaw += gAccZ * dt; // unfortunately no possible filtering for yaw // board x real z
         
         dRoll = roll * 180.0f / PI; dPitch = pitch * 180.0f / PI; dYaw = yaw * 180.0f/PI;
 
@@ -210,9 +204,9 @@ void loop()
         // For yaw ignore as gyro drift is not corrected, we will let user fully control yaw
                 //servoYawCorrection = servo_correction_factor * (desiredYaw - yaw) 
                     // - correction_damping * gAccZ;
-        servoPitchCorrection =  servo_correction_factor * (desiredPitch - pitch)
+        servoPitchCorrection =  servo_correction_factor * (desiredPitch - dPitch)
             - correction_damping * gAccY;
-        servoRollCorrection =  servo_correction_factor * (desiredRoll - roll)
+        servoRollCorrection =  servo_correction_factor * (desiredRoll - dRoll)
             - correction_damping * gAccX;
 
         // for yaw we just turn based on strength of yaw input from controller
@@ -225,9 +219,9 @@ void loop()
         servoYawCorrection = constrain(servoYawCorrection, -limit_yaw_correction, limit_yaw_correction);
 
 
-        rudderAngle = servoYawCorrection * 180 / PI;
-        aileronAngle = servoRollCorrection * 180/PI;
-        elevatorAngle = servoPitchCorrection * 180/PI;
+        rudderAngle = servoYawCorrection;
+        aileronAngle = servoRollCorrection;
+        elevatorAngle = servoPitchCorrection;
 
         Rudder.write(rudderAngle + RUDDER0);
         Aileron.write(aileronAngle + AILERON0);
@@ -238,14 +232,13 @@ void loop()
             Rudder.write(RUDDER0);
         }
 
-        Serial.write(ser)
 
          // IGNORE SIMPLY FOR DATA TRANSFER
         Serial.print("DBG");
         Serial.print(" ");
-        Serial.print(dRoll); //  X is properly roll & forward direction-
+        Serial.print(180-dRoll); //  X is properly roll & forward direction-
         Serial.print(" ");
-        Serial.print(dPitch);
+        Serial.print(-dPitch);
         Serial.print(" ");
         Serial.print(dYaw);
         Serial.print(" ");
@@ -254,7 +247,7 @@ void loop()
         Serial.print(elevatorAngle);
         Serial.print(" ");
         Serial.print(aileronAngle);
-        Serial.print(" ")
+        Serial.print(" ");
         Serial.println("");
 
         
