@@ -58,7 +58,7 @@ aileron_origin = (-1.65, 0,0)
 
 # if line starts with DBG, its a data line.
 key = "DBG"
-formatting = ["roll", "pitch", "yaw", "rudder", "aileron", "elevator"]
+formatting = ["roll", "pitch", "yaw", "rudder", "elevator", "aileron", "droll", "dpitch", "dyaw"]
 
 serialCom = None
 
@@ -215,20 +215,23 @@ while running:
         data_bytes = serialCom.readline()
         
     decoded_data= data_bytes.decode('utf-8').strip().split()
-    print(decoded_data)
+    print(list(zip(decoded_data[4:], formatting[3:])))
     if decoded_data and decoded_data[0] == key:
         decoded_data = [float(v) for v in decoded_data[1:]]
         #print(decoded_data)
 
         
 
-        roll = decoded_data[formatting.index("roll")]
-        yaw = decoded_data[formatting.index("yaw")] * 0 # yaw is unreliable
-        pitch = decoded_data[formatting.index("pitch")]
+        roll = decoded_data[formatting.index("droll")]
+        yaw = decoded_data[formatting.index("dyaw")] # yaw is unreliable
+        pitch = decoded_data[formatting.index("dpitch")]
+        roll = 0
+        yaw = 0
+        pitch = 0
 
-        rudderAngle = decoded_data[formatting.index("rudder")]
+        rudderAngle = -decoded_data[formatting.index("rudder")]
         aileronAngle = decoded_data[formatting.index("aileron")]
-        elevatorAngle = decoded_data[formatting.index("elevator")]
+        elevatorAngle = -decoded_data[formatting.index("elevator")]
 
         rudder_frame = rotate_yaw(rudder, rudderAngle * 3.14159 / 180.0, rudder_origin)
         elevator_frame = rotate_pitch(elevator, elevatorAngle * 3.14159 / 180.0, elevator_origin)

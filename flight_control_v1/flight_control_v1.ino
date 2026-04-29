@@ -41,25 +41,31 @@ const float filter_coeficient = 0.9f; // higher the more gyro has control, less 
 
 // Essentially damps the correction to not overshoot due to angular momentum
 const float correction_damping = 1.0f; // FINE TUNE EXPERIMENTALLY PLEASE!
-const float servo_correction_factor = 3.0f; // FINE TUNEEEE
+const float servo_correction_factor = 4.0f; // FINE TUNEEEE
 
 // preventsservos fromfucking exploding everywhere
-const float limit_roll_correction = 45.0f * PI / 180.0f;
-const float limit_pitch_correction = 45.0f * PI / 180.0f;
-const float limit_yaw_correction = 45.0f * PI / 180.0f;
+const float limit_roll_correction = 40.0f ;
+const float limit_pitch_correction = 40.0f ;
+const float limit_yaw_correction = 40.0f ;
 
-// PINSSS FINALLYL ATFUCKING 1AM 
-const int yaw_input_pin = -1293219301; // i dont fucking know SET THIS TMW!
-const int roll_input_pin = -102938120392813;
-const int pitch_input_pin= 12123092813;
-const int throttle_input_pin = 12938120938210938;
+const float limit_roll = 50.0f;
+const float limit_pitch = 50.0f;
+const float limit_yaw = 50.0f;
+
+// PINSSS FINALLYL ATFUCKING 1AM
+// Pins 2,3,4 are all input pins
+// Pins 2 ch1 3-2 4-4.
+const int yaw_input_pin = 2; // i dont fucking know SET THIS TMW!
+const int roll_input_pin = 4;
+const int pitch_input_pin= 3;
+const int throttle_input_pin = -1;// ignore physically connecte
 
 const int rudder_pin = 5; // proper
-const int elevator_pin = 1209382309;
+const int elevator_pin = 6;
 const int aileron_pin =123213;
 
-const int RUDDER0 = 124;
-const int ELEVATOR0 = 124;
+const int RUDDER0 = 128;
+const int ELEVATOR0 = 112;
 const int AILERON0 = 124;
 
 Servo Rudder;
@@ -68,7 +74,9 @@ Servo Aileron;
 
 // If were in debugging we wont actually update servo data.
 const bool DEBUGGING = true;
-const bool RUDDER_DEBUGGING =true;
+const bool RUDDER_DEBUGGING =false;
+const bool AILERON_DEBUGGING = false;
+const bool ELEVATOR_DEBUGGING = false;
 
 
 
@@ -86,10 +94,10 @@ void setup()
     Serial.println("INITIALIZED SERIAL COMMUNICATION WITH ARDUINO");
     Serial.println("----------------------------------------------");
     Serial.print("\nStarting mpu-arduino communication (-1-)...");
-
+    delay(3000);
     Wire.begin();
     Serial.println("Wire began!");
-    delay(1000);
+    delay(3000);
     Serial.println("Done waiting!");
     // Starting communication with MPU
     bool started_mpu = false;
@@ -126,13 +134,31 @@ void setup()
 
     Serial.println("Attaching rudder (-4-)");
     Rudder.attach(rudder_pin);
+    Elevator.attach(elevator_pin);
+    Aileron.attach(aileron_pin);
     Serial.println("(-4-) [Success] rudder attached");
 
     Serial.println("----------SETUP COMPLETE[3/3]---------------");
     delay(100);
     Serial.println("(-4) MAIN PROGRAM STARTING...");
 
+    pinMode(yaw_input_pin, INPUT);
+    pinMode(roll_input_pin, INPUT);
+    pinMode(pitch_input_pin, INPUT);
 
+
+}
+// this function isfrom chatgpt just to fix the discontinuity in atan2 when computing roll using accelerometers
+float unwrapAngle(float newAngle, float prevAngle) {
+    float diff = newAngle - prevAngle;
+
+    if (diff > PI) {
+        newAngle -= 2 * PI;
+    } else if (diff < -PI) {
+        newAngle += 2 * PI;
+    }
+
+    return newAngle;
 }
 
 // ---------------------- LOOP VARIABLES --------------------
@@ -152,6 +178,9 @@ float rudderAngle = 0; float elevatorAngle = 0; float aileronAngle = 0;
 float accX, accY, accZ;
 float gAccX, gAccY, gAccZ;
 
+// for roll
+float prevAngleRoll = 0;
+
 // For accurate timestep computation
 unsigned long last_time = 0;
 float dt = 0.0f; // important, tells how much time since last iteration of code update
@@ -167,6 +196,14 @@ void loop()
         sensors_event_t a, g, temp; // temp stands for temperature and not temporary lol (victim of this)
         bool got_read = MPU_Sensor.getEvent(&a, &g, &temp);
 
+        // getting controller input
+        int roll_input = pulseIn(roll_input_pin, HIGH);
+        int yaw_input = pulseIn(yaw_input_pin,HIGH);
+        int pitch_input = pulseIn(pitch_input_pin, HIGH);
+  
+        desiredRoll = map(roll_input, 1000, 2000, -limit_roll, limit_roll);
+        strengthYaw = map(yaw_input, 1000, 2000, -limit_yaw, limit_yaw);
+        desiredPitch = map(pitch_input, 1000, 2000, -limit_pitch, limit_pitch);
 
         if (!got_read)
         {
@@ -187,13 +224,14 @@ void loop()
         // C) yaw increases when turning towards right wing
         // D) pitch increases as nose goes up 
         // COMPLEMENTARY FILTERING! 
-        roll = filter_coeficient * (roll + gAccX * dt) + (1-filter_coeficient) * atan2(accY, accZ);  // board y real x
+        float accRoll = unwrapAngle(atan2(accY, accZ), roll);
+        roll = filter_coeficient * (roll + gAccX * dt) + (1-filter_coeficient) * accRoll;  // board y real x
         //roll *= -1.0f;
         pitch = filter_coeficient * (pitch + gAccY * dt) + (1-filter_coeficient) * atan2(-accX, sqrt(accY*accY + accZ*accZ));// board z real y
         //pitch *= -1.0f;
         yaw += gAccZ * dt; // unfortunately no possible filtering for yaw // board x real z
         
-        dRoll = roll * 180.0f / PI; dPitch = pitch * 180.0f / PI; dYaw = yaw * 180.0f/PI;
+        dRoll = 180.0f - roll * 180.0f / PI; dPitch = -pitch * 180.0f / PI; dYaw = yaw * 180.0f/PI;
 
 
         
@@ -223,22 +261,34 @@ void loop()
         aileronAngle = servoRollCorrection;
         elevatorAngle = servoPitchCorrection;
 
-        Rudder.write(rudderAngle + RUDDER0);
-        Aileron.write(aileronAngle + AILERON0);
-        Elevator.write(elevatorAngle + ELEVATOR0);
+        if (!(RUDDER_DEBUGGING || ELEVATOR_DEBUGGING || AILERON_DEBUGGING))
+        {
+            Rudder.write(rudderAngle + RUDDER0);
+            Aileron.write(aileronAngle + AILERON0);
+            Elevator.write(-elevatorAngle + ELEVATOR0);
+        }
 
         if (RUDDER_DEBUGGING)
         {
             Rudder.write(RUDDER0);
         }
 
+        if (ELEVATOR_DEBUGGING)
+        {
+            Elevator.write(ELEVATOR0);
+        }
+
+        if (AILERON_DEBUGGING)
+        {
+            Aileron.write(AILERON0);
+        }
 
          // IGNORE SIMPLY FOR DATA TRANSFER
         Serial.print("DBG");
         Serial.print(" ");
-        Serial.print(180-dRoll); //  X is properly roll & forward direction-
+        Serial.print(dRoll); //  X is properly roll & forward direction-
         Serial.print(" ");
-        Serial.print(-dPitch);
+        Serial.print(dPitch);
         Serial.print(" ");
         Serial.print(dYaw);
         Serial.print(" ");
@@ -248,12 +298,18 @@ void loop()
         Serial.print(" ");
         Serial.print(aileronAngle);
         Serial.print(" ");
+        Serial.print(desiredRoll);
+        Serial.print(" ");
+        Serial.print(desiredPitch);
+        Serial.print(" ");
+        Serial.print(strengthYaw);
+        Serial.print("");
         Serial.println("");
 
         
         
         
-
+        prevAngleRoll = roll;
 
 
     }
